@@ -1,5 +1,5 @@
 const FUNCTION_URL =
-  "https://YOUR_PROJECT_REF.supabase.co/functions/v1/x-scrapper";
+  "https://cqlopsqqqzzkfpmcntbv.supabase.co/functions/v1/x-scrapper";
 
 const form = document.getElementById("scrape-form");
 const input = document.getElementById("handle-input");
