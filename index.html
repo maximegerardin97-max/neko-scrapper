@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Neko Scrapper</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <div class="card">
+        <div class="brand">
+          <span class="dot"></span>
+          <span class="title">Neko Scrapper</span>
+        </div>
+        <p class="subtitle">
+          Paste your X handle here
+        </p>
+        <form id="scrape-form" class="form">
+          <input
+            id="handle-input"
+            name="handle"
+            type="text"
+            placeholder="@username or https://x.com/username"
+            autocomplete="off"
+            spellcheck="false"
+            required
+          />
+          <button id="extract-btn" type="submit">Extract</button>
+        </form>
+        <p id="status" class="status" aria-live="polite"></p>
+      </div>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>
