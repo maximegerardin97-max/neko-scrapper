@@ -2,6 +2,8 @@ const X_FUNCTION_URL =
   "https://cqlopsqqqzzkfpmcntbv.supabase.co/functions/v1/x-scrapper";
 const TIKTOK_FUNCTION_URL =
   "https://cqlopsqqqzzkfpmcntbv.supabase.co/functions/v1/tiktok-comments-scraper";
+const HYPEMETER_FUNCTION_URL =
+  "https://cqlopsqqqzzkfpmcntbv.supabase.co/functions/v1/hjalmar-hypemeter";
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNxbG9wc3FxcXp6a2ZwbWNudGJ2Iiwicm9zZSI6ImFub24iLCJpYXQiOjE3NjMxMjUxNDMsImV4cCI6MjA3ODcwMTE0M30.J3vuzmF7cG3e6ZMx_NwHtmTIqQKJvKP1cGOXcoXBaX0";
 const HYPE_HANDLE = "HNilsonne";
@@ -29,7 +31,7 @@ const kpiMedicalDelta = document.getElementById("kpi-medical-delta");
 const kpiOtherDelta = document.getElementById("kpi-other-delta");
 const chartContainer = document.getElementById("hypemeter-chart");
 
-let hypCsvCache = "";
+let hypemeterDataCache = null;
 
 const setStatus = (message, isError = false) => {
   statusEl.textContent = message;
@@ -96,7 +98,9 @@ const downloadCsv = (csv, handle, mode) => {
 
 const startScrape = async (handle) => {
   const functionUrl =
-    currentMode === "x" || currentMode === "hypemeter"
+    currentMode === "hypemeter"
+      ? HYPEMETER_FUNCTION_URL
+      : currentMode === "x"
       ? X_FUNCTION_URL
       : TIKTOK_FUNCTION_URL;
   const response = await fetch(functionUrl, {
@@ -123,7 +127,9 @@ const startScrape = async (handle) => {
 
 const pollForCsv = async (handle, runId) => {
   const functionUrl =
-    currentMode === "x" || currentMode === "hypemeter"
+    currentMode === "hypemeter"
+      ? HYPEMETER_FUNCTION_URL
+      : currentMode === "x"
       ? X_FUNCTION_URL
       : TIKTOK_FUNCTION_URL;
   while (true) {
@@ -139,21 +145,26 @@ const pollForCsv = async (handle, runId) => {
       body: JSON.stringify({ handle, runId }),
     });
 
+    if (currentMode === "hypemeter") {
+      const data = await response.json();
+      if (data.status === "running") {
+        continue;
+      }
+      if (data.status === "done") {
+        hypemeterDataCache = data;
+        renderHypemeterData(data);
+        setStatus("Analysis ready.");
+        return;
+      }
+      throw new Error(data.error || "Scrape failed.");
+    }
+
     const contentType = response.headers.get("Content-Type") || "";
 
     if (contentType.startsWith("text/csv")) {
       const csv = await response.text();
-      if (currentMode === "hypemeter") {
-        hypCsvCache = csv;
-        const snapshot = processHypemeterCsv(csv);
-        saveSnapshot(snapshot);
-        renderSnapshotDeltas();
-        renderChart();
-        setStatus("Analysis ready.");
-      } else {
-        downloadCsv(csv, handle, currentMode);
-        setStatus("CSV downloaded.");
-      }
+      downloadCsv(csv, handle, currentMode);
+      setStatus("CSV downloaded.");
       return;
     }
 
@@ -166,211 +177,40 @@ const pollForCsv = async (handle, runId) => {
   }
 };
 
-const classifyFollower = (name, bio) => {
-  const text = `${name} ${bio}`.toLowerCase();
 
-  const techStrong = [
-    "vc",
-    "venture",
-    "general partner",
-    " gp ",
-    "gp,",
-    "investor",
-    "angel",
-    "fund",
-    "capital",
-    "lp ",
-    "yc ",
-    "y combinator",
-    "startup",
-    "founder",
-    "cofounder",
-    "operator",
-    "pre-seed",
-    "pre seed",
-    "seed fund",
-    "series a",
-    "growth",
-    "product manager",
-    " pm ",
-    "cto",
-    "ceo",
-    "cso",
-    "cpo",
-    "ai",
-    "ml",
-    "saas",
-    "software",
-    "engineer",
-    "developer",
-    "builder",
-    "tech ",
-    "b2b",
-    "b2c",
-  ];
 
-  const techWeak = [
-    "portfolio",
-    "accelerator",
-    "incubator",
-    "scaleup",
-    "innovation",
-    "ecosystem",
-    "operator investor",
-  ];
 
-  const medicalStrong = [
-    "doctor",
-    " dr ",
-    " dr.",
-    "md",
-    "physician",
-    "surgeon",
-    "radiology",
-    "radiologist",
-    "oncology",
-    "oncologist",
-    "cardiology",
-    "neurology",
-    "psych ",
-    "clinic",
-    "hospital",
-    "er ",
-    "emergency room",
-    "gp (general practitioner)",
-    "nurse",
-    " rn ",
-    "healthcare",
-    "medtech",
-    "patient care",
-  ];
+const renderHypemeterData = (data) => {
+  const { kpis, weeklyDelta, monthlyDelta, timeline, followers } = data;
 
-  const medicalWeak = [
-    "health",
-    "wellness",
-    "public health",
-    "epidemiology",
-    "clinical",
-    "therapist",
-    "counselor",
-    "mental health",
-  ];
+  // Render KPIs
+  kpiTotal.textContent = kpis.total.toString();
+  kpiTech.textContent = kpis.tech_vc.toString();
+  kpiMedical.textContent = kpis.medical.toString();
+  kpiOther.textContent = kpis.other.toString();
 
-  let techScore = 0;
-  let medicalScore = 0;
-
-  techStrong.forEach((k) => {
-    if (text.includes(k)) techScore += 3;
-  });
-  techWeak.forEach((k) => {
-    if (text.includes(k)) techScore += 1;
-  });
-
-  medicalStrong.forEach((k) => {
-    if (text.includes(k)) medicalScore += 3;
-  });
-  medicalWeak.forEach((k) => {
-    if (text.includes(k)) medicalScore += 1;
-  });
-
-  if (techScore === 0 && medicalScore === 0) return "Other";
-  if (techScore >= medicalScore) return "Tech / VC";
-  return "Medical";
-};
-
-const parseCsv = (csv) => {
-  const lines = csv.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length < 2) return [];
-
-  const parseLine = (line) => {
-    const result = [];
-    let current = "";
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i += 1) {
-      const char = line[i];
-      if (char === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          current += '"';
-          i += 1;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === "," && !inQuotes) {
-        result.push(current);
-        current = "";
-      } else {
-        current += char;
-      }
-    }
-    result.push(current);
-    return result;
+  // Render deltas
+  const formatDelta = (delta) => {
+    if (!delta) return "";
+    const sign = delta >= 0 ? "+" : "";
+    return `${sign}${delta}`;
   };
 
-  const header = parseLine(lines[0]);
-  return lines.slice(1).map((line) => {
-    const cells = parseLine(line);
-    const obj = {};
-    header.forEach((key, idx) => {
-      obj[key] = cells[idx] ?? "";
-    });
-    return obj;
-  });
-};
-
-const STORAGE_KEY = "hjalmar_hypemeter_snapshots_v1";
-
-const loadSnapshots = () => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw);
-  } catch (_e) {
-    return [];
+  if (weeklyDelta && monthlyDelta) {
+    kpiTotalDelta.textContent = `1w: ${formatDelta(weeklyDelta.total)}, 1m: ${formatDelta(monthlyDelta.total)}`;
+    kpiTechDelta.textContent = `1w: ${formatDelta(weeklyDelta.tech_vc)}, 1m: ${formatDelta(monthlyDelta.tech_vc)}`;
+    kpiMedicalDelta.textContent = `1w: ${formatDelta(weeklyDelta.medical)}, 1m: ${formatDelta(monthlyDelta.medical)}`;
+    kpiOtherDelta.textContent = `1w: ${formatDelta(weeklyDelta.other)}, 1m: ${formatDelta(monthlyDelta.other)}`;
+  } else {
+    kpiTotalDelta.textContent = "";
+    kpiTechDelta.textContent = "";
+    kpiMedicalDelta.textContent = "";
+    kpiOtherDelta.textContent = "";
   }
-};
 
-const saveSnapshots = (snapshots) => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshots));
-  } catch (_e) {
-    // ignore
-  }
-};
-
-const saveSnapshot = (snapshot) => {
-  const snapshots = loadSnapshots();
-  snapshots.push(snapshot);
-  // keep last 52 weeks worth
-  while (snapshots.length > 60) snapshots.shift();
-  saveSnapshots(snapshots);
-};
-
-const processHypemeterCsv = (csv) => {
-  const rows = parseCsv(csv);
-
-  const followers = rows.map((r) => ({
-    username: r.username || "",
-    name: r.name || "",
-    bio: r.bio || r.description || "",
-    location: r.location || "",
-    profileUrl: r.profile_url || r.profileUrl || "",
-  }));
-
-  let total = 0;
-  let tech = 0;
-  let medical = 0;
-  let other = 0;
-
+  // Render followers table
   hypTbody.innerHTML = "";
-
   followers.forEach((follower) => {
-    total += 1;
-    const category = classifyFollower(follower.name, follower.bio);
-    if (category === "Tech / VC") tech += 1;
-    else if (category === "Medical") medical += 1;
-    else other += 1;
-
     const tr = document.createElement("tr");
     const usernameCell = follower.username
       ? `<a href="${follower.profileUrl}" target="_blank" rel="noopener noreferrer">@${follower.username}</a>`
@@ -380,98 +220,17 @@ const processHypemeterCsv = (csv) => {
       <td>${follower.name}</td>
       <td>${follower.bio}</td>
       <td>${follower.location}</td>
-      <td>${category}</td>
+      <td>${follower.category}</td>
     `;
     hypTbody.appendChild(tr);
   });
 
-  kpiTotal.textContent = total.toString();
-  kpiTech.textContent = tech.toString();
-  kpiMedical.textContent = medical.toString();
-  kpiOther.textContent = other.toString();
-
-  const snapshot = {
-    date: new Date().toISOString(),
-    total,
-    tech,
-    medical,
-    other,
-  };
-
-  return snapshot;
+  // Render chart
+  renderHypemeterChart(timeline);
 };
 
-const formatDelta = (current, prev) => {
-  if (prev === null || prev === undefined) return "";
-  const diff = current - prev;
-  if (diff === 0) return "no change";
-  const sign = diff > 0 ? "+" : "";
-  return `${sign}${diff}`;
-};
-
-const renderSnapshotDeltas = () => {
-  const snapshots = loadSnapshots();
-  if (snapshots.length === 0) return;
-
-  const latest = snapshots[snapshots.length - 1];
-  const now = new Date(latest.date).getTime();
-  const weekMs = 7 * 24 * 60 * 60 * 1000;
-  const monthMs = 30 * 24 * 60 * 60 * 1000;
-
-  let weekRef = null;
-  let monthRef = null;
-
-  snapshots.forEach((s) => {
-    const t = new Date(s.date).getTime();
-    if (now - t >= weekMs && (!weekRef || t > new Date(weekRef.date).getTime())) {
-      weekRef = s;
-    }
-    if (now - t >= monthMs && (!monthRef || t > new Date(monthRef.date).getTime())) {
-      monthRef = s;
-    }
-  });
-
-  const total = latest.total;
-  const tech = latest.tech;
-  const medical = latest.medical;
-  const other = latest.other;
-
-  const weekTotal = weekRef ? weekRef.total : null;
-  const weekTech = weekRef ? weekRef.tech : null;
-  const weekMedical = weekRef ? weekRef.medical : null;
-  const weekOther = weekRef ? weekRef.other : null;
-
-  const monthTotal = monthRef ? monthRef.total : null;
-  const monthTech = monthRef ? monthRef.tech : null;
-  const monthMedical = monthRef ? monthRef.medical : null;
-  const monthOther = monthRef ? monthRef.other : null;
-
-  const lines = [];
-  lines.push(
-    `1w: ${formatDelta(total, weekTotal)}, 1m: ${formatDelta(
-      total,
-      monthTotal,
-    )}`,
-  );
-  kpiTotalDelta.textContent = lines[0];
-
-  kpiTechDelta.textContent = `1w: ${formatDelta(
-    tech,
-    weekTech,
-  )}, 1m: ${formatDelta(tech, monthTech)}`;
-  kpiMedicalDelta.textContent = `1w: ${formatDelta(
-    medical,
-    weekMedical,
-  )}, 1m: ${formatDelta(medical, monthMedical)}`;
-  kpiOtherDelta.textContent = `1w: ${formatDelta(
-    other,
-    weekOther,
-  )}, 1m: ${formatDelta(other, monthOther)}`;
-};
-
-const renderChart = () => {
-  const snapshots = loadSnapshots();
-  if (snapshots.length < 2) {
+const renderHypemeterChart = (timeline) => {
+  if (!timeline || timeline.length < 2) {
     chartContainer.innerHTML = "<div class=\"kpi-delta\">Run Hypemeter a few times to see trends.</div>";
     return;
   }
@@ -483,7 +242,7 @@ const renderChart = () => {
   const innerHeight = height - padding * 2;
 
   const maxY = Math.max(
-    ...snapshots.map((s) => Math.max(s.tech, s.medical, s.other)),
+    ...timeline.map((s) => Math.max(s.tech_vc, s.medical, s.other)),
   );
   if (maxY === 0) {
     chartContainer.innerHTML = "";
@@ -491,7 +250,7 @@ const renderChart = () => {
   }
 
   const xStep =
-    snapshots.length === 1 ? innerWidth : innerWidth / (snapshots.length - 1);
+    timeline.length === 1 ? innerWidth : innerWidth / (timeline.length - 1);
 
   const toPoint = (idx, value) => {
     const x = padding + idx * xStep;
@@ -499,13 +258,13 @@ const renderChart = () => {
     return `${x},${y}`;
   };
 
-  const techPoints = snapshots
-    .map((s, i) => toPoint(i, s.tech))
+  const techPoints = timeline
+    .map((s, i) => toPoint(i, s.tech_vc))
     .join(" ");
-  const medicalPoints = snapshots
+  const medicalPoints = timeline
     .map((s, i) => toPoint(i, s.medical))
     .join(" ");
-  const otherPoints = snapshots
+  const otherPoints = timeline
     .map((s, i) => toPoint(i, s.other))
     .join(" ");
 
@@ -556,7 +315,7 @@ toggleTiktok.addEventListener("click", () => {
   hypPanel.classList.add("hidden");
 });
 
-toggleHypemeter.addEventListener("click", () => {
+toggleHypemeter.addEventListener("click", async () => {
   currentMode = "hypemeter";
   toggleHypemeter.classList.add("active");
   toggleX.classList.remove("active");
@@ -565,16 +324,75 @@ toggleHypemeter.addEventListener("click", () => {
   input.placeholder = "Handle is fixed to @HNilsonne";
   input.value = "@HNilsonne";
   hypPanel.classList.remove("hidden");
-  renderSnapshotDeltas();
-  renderChart();
+
+  // Load latest data if available
+  if (hypemeterDataCache) {
+    renderHypemeterData(hypemeterDataCache);
+  } else {
+    // Try to fetch latest
+    setStatus("Loading latest Hypemeter data...");
+    try {
+      const response = await fetch(HYPEMETER_FUNCTION_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ handle: HYPE_HANDLE }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === "done") {
+          hypemeterDataCache = data;
+          renderHypemeterData(data);
+          setStatus("");
+        } else {
+          setStatus("No data yet. Click Extract to run analysis.");
+        }
+      } else {
+        setStatus("No data yet. Click Extract to run analysis.");
+      }
+    } catch {
+      setStatus("No data yet. Click Extract to run analysis.");
+    }
+  }
 });
 
 hypDownloadBtn.addEventListener("click", () => {
-  if (!hypCsvCache) {
+  if (!hypemeterDataCache) {
     setStatus("Run the Hypemeter first to generate data.", true);
     return;
   }
-  downloadCsv(hypCsvCache, HYPE_HANDLE, "hypemeter");
+
+  const { kpis, followers } = hypemeterDataCache;
+  let csvContent = "# KPIs\n";
+  csvContent += "metric,value\n";
+  csvContent += `total_followers,${kpis.total}\n`;
+  csvContent += `tech_vc,${kpis.tech_vc}\n`;
+  csvContent += `medical,${kpis.medical}\n`;
+  csvContent += `other,${kpis.other}\n`;
+  csvContent += "\n# Followers\n";
+  csvContent += "username,name,bio,location,profile_url,category\n";
+
+  followers.forEach((f) => {
+    const csvEscape = (val) => {
+      const s = String(val ?? "");
+      if (/[",\n]/.test(s)) {
+        return `"${s.replaceAll('"', '""')}"`;
+      }
+      return s;
+    };
+    csvContent += [
+      csvEscape(f.username),
+      csvEscape(f.name),
+      csvEscape(f.bio),
+      csvEscape(f.location),
+      csvEscape(f.profileUrl),
+      csvEscape(f.category),
+    ].join(",") + "\n";
+  });
+
+  downloadCsv(csvContent, HYPE_HANDLE, "hypemeter");
 });
 
 form.addEventListener("submit", async (event) => {
