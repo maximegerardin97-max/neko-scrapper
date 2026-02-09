@@ -179,6 +179,24 @@ button:not(:disabled):hover {
   font-weight: 600;
 }
 
+.kpi-delta {
+  font-size: 11px;
+  color: #8b8b8b;
+}
+
+.hypemeter-chart {
+  margin-bottom: 12px;
+  border-radius: 12px;
+  border: 1px solid #efe7dd;
+  background: #fdfcfb;
+  padding: 8px;
+}
+
+.hypemeter-chart svg {
+  width: 100%;
+  height: 160px;
+}
+
 .hypemeter-table-wrapper {
   max-height: 260px;
   overflow: auto;

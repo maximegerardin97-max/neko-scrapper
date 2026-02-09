@@ -23,6 +23,11 @@ const kpiTotal = document.getElementById("kpi-total");
 const kpiTech = document.getElementById("kpi-tech");
 const kpiMedical = document.getElementById("kpi-medical");
 const kpiOther = document.getElementById("kpi-other");
+const kpiTotalDelta = document.getElementById("kpi-total-delta");
+const kpiTechDelta = document.getElementById("kpi-tech-delta");
+const kpiMedicalDelta = document.getElementById("kpi-medical-delta");
+const kpiOtherDelta = document.getElementById("kpi-other-delta");
+const chartContainer = document.getElementById("hypemeter-chart");
 
 let hypCsvCache = "";
 
@@ -45,7 +50,7 @@ const normalizeHandle = (value) => {
         const parts = url.pathname.split("/").filter(Boolean);
         return parts[0] || "";
       }
-    } catch (error) {
+    } catch (_error) {
       // Not a URL; treat as handle.
     }
     return trimmed.replace(/^@/, "").split("/")[0];
@@ -140,7 +145,10 @@ const pollForCsv = async (handle, runId) => {
       const csv = await response.text();
       if (currentMode === "hypemeter") {
         hypCsvCache = csv;
-        processHypemeterCsv(csv);
+        const snapshot = processHypemeterCsv(csv);
+        saveSnapshot(snapshot);
+        renderSnapshotDeltas();
+        renderChart();
         setStatus("Analysis ready.");
       } else {
         downloadCsv(csv, handle, currentMode);
@@ -161,38 +169,113 @@ const pollForCsv = async (handle, runId) => {
 const classifyFollower = (name, bio) => {
   const text = `${name} ${bio}`.toLowerCase();
 
-  const techKeywords = [
-    "founder",
-    "cofounder",
-    "startup",
+  const techStrong = [
     "vc",
     "venture",
+    "general partner",
+    " gp ",
+    "gp,",
+    "investor",
     "angel",
-    "product",
-    "engineer",
-    "developer",
-    "software",
+    "fund",
+    "capital",
+    "lp ",
+    "yc ",
+    "y combinator",
+    "startup",
+    "founder",
+    "cofounder",
+    "operator",
+    "pre-seed",
+    "pre seed",
+    "seed fund",
+    "series a",
+    "growth",
+    "product manager",
+    " pm ",
+    "cto",
+    "ceo",
+    "cso",
+    "cpo",
     "ai",
     "ml",
     "saas",
-  ];
-  const medicalKeywords = [
-    "doctor",
-    "md",
-    "dr ",
-    "dr.",
-    "physician",
-    "clinic",
-    "hospital",
-    "patient",
-    "health",
-    "medical",
-    "nurse",
+    "software",
+    "engineer",
+    "developer",
+    "builder",
+    "tech ",
+    "b2b",
+    "b2c",
   ];
 
-  if (techKeywords.some((k) => text.includes(k))) return "Tech / VC";
-  if (medicalKeywords.some((k) => text.includes(k))) return "Medical";
-  return "Other";
+  const techWeak = [
+    "portfolio",
+    "accelerator",
+    "incubator",
+    "scaleup",
+    "innovation",
+    "ecosystem",
+    "operator investor",
+  ];
+
+  const medicalStrong = [
+    "doctor",
+    " dr ",
+    " dr.",
+    "md",
+    "physician",
+    "surgeon",
+    "radiology",
+    "radiologist",
+    "oncology",
+    "oncologist",
+    "cardiology",
+    "neurology",
+    "psych ",
+    "clinic",
+    "hospital",
+    "er ",
+    "emergency room",
+    "gp (general practitioner)",
+    "nurse",
+    " rn ",
+    "healthcare",
+    "medtech",
+    "patient care",
+  ];
+
+  const medicalWeak = [
+    "health",
+    "wellness",
+    "public health",
+    "epidemiology",
+    "clinical",
+    "therapist",
+    "counselor",
+    "mental health",
+  ];
+
+  let techScore = 0;
+  let medicalScore = 0;
+
+  techStrong.forEach((k) => {
+    if (text.includes(k)) techScore += 3;
+  });
+  techWeak.forEach((k) => {
+    if (text.includes(k)) techScore += 1;
+  });
+
+  medicalStrong.forEach((k) => {
+    if (text.includes(k)) medicalScore += 3;
+  });
+  medicalWeak.forEach((k) => {
+    if (text.includes(k)) medicalScore += 1;
+  });
+
+  if (techScore === 0 && medicalScore === 0) return "Other";
+  if (techScore >= medicalScore) return "Tech / VC";
+  return "Medical";
 };
 
 const parseCsv = (csv) => {
@@ -233,6 +316,34 @@ const parseCsv = (csv) => {
     });
     return obj;
   });
+};
+
+const STORAGE_KEY = "hjalmar_hypemeter_snapshots_v1";
+
+const loadSnapshots = () => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch (_e) {
+    return [];
+  }
+};
+
+const saveSnapshots = (snapshots) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshots));
+  } catch (_e) {
+    // ignore
+  }
+};
+
+const saveSnapshot = (snapshot) => {
+  const snapshots = loadSnapshots();
+  snapshots.push(snapshot);
+  // keep last 52 weeks worth
+  while (snapshots.length > 60) snapshots.shift();
+  saveSnapshots(snapshots);
 };
 
 const processHypemeterCsv = (csv) => {
@@ -278,6 +389,148 @@ const processHypemeterCsv = (csv) => {
   kpiTech.textContent = tech.toString();
   kpiMedical.textContent = medical.toString();
   kpiOther.textContent = other.toString();
+
+  const snapshot = {
+    date: new Date().toISOString(),
+    total,
+    tech,
+    medical,
+    other,
+  };
+
+  return snapshot;
+};
+
+const formatDelta = (current, prev) => {
+  if (prev === null || prev === undefined) return "";
+  const diff = current - prev;
+  if (diff === 0) return "no change";
+  const sign = diff > 0 ? "+" : "";
+  return `${sign}${diff}`;
+};
+
+const renderSnapshotDeltas = () => {
+  const snapshots = loadSnapshots();
+  if (snapshots.length === 0) return;
+
+  const latest = snapshots[snapshots.length - 1];
+  const now = new Date(latest.date).getTime();
+  const weekMs = 7 * 24 * 60 * 60 * 1000;
+  const monthMs = 30 * 24 * 60 * 60 * 1000;
+
+  let weekRef = null;
+  let monthRef = null;
+
+  snapshots.forEach((s) => {
+    const t = new Date(s.date).getTime();
+    if (now - t >= weekMs && (!weekRef || t > new Date(weekRef.date).getTime())) {
+      weekRef = s;
+    }
+    if (now - t >= monthMs && (!monthRef || t > new Date(monthRef.date).getTime())) {
+      monthRef = s;
+    }
+  });
+
+  const total = latest.total;
+  const tech = latest.tech;
+  const medical = latest.medical;
+  const other = latest.other;
+
+  const weekTotal = weekRef ? weekRef.total : null;
+  const weekTech = weekRef ? weekRef.tech : null;
+  const weekMedical = weekRef ? weekRef.medical : null;
+  const weekOther = weekRef ? weekRef.other : null;
+
+  const monthTotal = monthRef ? monthRef.total : null;
+  const monthTech = monthRef ? monthRef.tech : null;
+  const monthMedical = monthRef ? monthRef.medical : null;
+  const monthOther = monthRef ? monthRef.other : null;
+
+  const lines = [];
+  lines.push(
+    `1w: ${formatDelta(total, weekTotal)}, 1m: ${formatDelta(
+      total,
+      monthTotal,
+    )}`,
+  );
+  kpiTotalDelta.textContent = lines[0];
+
+  kpiTechDelta.textContent = `1w: ${formatDelta(
+    tech,
+    weekTech,
+  )}, 1m: ${formatDelta(tech, monthTech)}`;
+  kpiMedicalDelta.textContent = `1w: ${formatDelta(
+    medical,
+    weekMedical,
+  )}, 1m: ${formatDelta(medical, monthMedical)}`;
+  kpiOtherDelta.textContent = `1w: ${formatDelta(
+    other,
+    weekOther,
+  )}, 1m: ${formatDelta(other, monthOther)}`;
+};
+
+const renderChart = () => {
+  const snapshots = loadSnapshots();
+  if (snapshots.length < 2) {
+    chartContainer.innerHTML = "<div class=\"kpi-delta\">Run Hypemeter a few times to see trends.</div>";
+    return;
+  }
+
+  const width = 560;
+  const height = 160;
+  const padding = 16;
+  const innerWidth = width - padding * 2;
+  const innerHeight = height - padding * 2;
+
+  const maxY = Math.max(
+    ...snapshots.map((s) => Math.max(s.tech, s.medical, s.other)),
+  );
+  if (maxY === 0) {
+    chartContainer.innerHTML = "";
+    return;
+  }
+
+  const xStep =
+    snapshots.length === 1 ? innerWidth : innerWidth / (snapshots.length - 1);
+
+  const toPoint = (idx, value) => {
+    const x = padding + idx * xStep;
+    const y = padding + innerHeight * (1 - value / maxY);
+    return `${x},${y}`;
+  };
+
+  const techPoints = snapshots
+    .map((s, i) => toPoint(i, s.tech))
+    .join(" ");
+  const medicalPoints = snapshots
+    .map((s, i) => toPoint(i, s.medical))
+    .join(" ");
+  const otherPoints = snapshots
+    .map((s, i) => toPoint(i, s.other))
+    .join(" ");
+
+  chartContainer.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}">
+      <polyline
+        fill="none"
+        stroke="#1f77b4"
+        stroke-width="2"
+        points="${techPoints}"
+      />
+      <polyline
+        fill="none"
+        stroke="#2ca02c"
+        stroke-width="2"
+        points="${medicalPoints}"
+      />
+      <polyline
+        fill="none"
+        stroke="#ff7f0e"
+        stroke-width="2"
+        points="${otherPoints}"
+      />
+    </svg>
+  `;
 };
 
 // Toggle mode
@@ -312,6 +565,8 @@ toggleHypemeter.addEventListener("click", () => {
   input.placeholder = "Handle is fixed to @HNilsonne";
   input.value = "@HNilsonne";
   hypPanel.classList.remove("hidden");
+  renderSnapshotDeltas();
+  renderChart();
 });
 
 hypDownloadBtn.addEventListener("click", () => {
