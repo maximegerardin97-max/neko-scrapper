@@ -18,7 +18,7 @@ body {
 }
 
 .card {
-  width: min(560px, 100%);
+  width: min(640px, 100%);
   background: #ffffff;
   border: 1px solid #e6e2dc;
   border-radius: 20px;
@@ -130,4 +130,84 @@ button:not(:disabled):hover {
   background: #ffffff;
   color: #121212;
   box-shadow: 0 2px 8px rgba(18, 18, 18, 0.1);
+}
+
+.hidden {
+  display: none;
+}
+
+.hypemeter {
+  margin-top: 20px;
+  border-top: 1px solid #eee7de;
+  padding-top: 16px;
+}
+
+.hypemeter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.hypemeter-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.kpi-card {
+  background: #f7f6f4;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.kpi-label {
+  font-size: 12px;
+  color: #7b7b7b;
+  margin-bottom: 4px;
+}
+
+.kpi-value {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.hypemeter-table-wrapper {
+  max-height: 260px;
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid #efe7dd;
+  background: #fdfcfb;
+}
+
+.hypemeter-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.hypemeter-table th,
+.hypemeter-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #efe7dd;
+  text-align: left;
+  vertical-align: top;
+}
+
+.hypemeter-table th {
+  position: sticky;
+  top: 0;
+  background: #f5f2ec;
+  z-index: 1;
+}
+
+.hypemeter-table tr:last-child td {
+  border-bottom: none;
 }

@@ -14,8 +14,23 @@
           <span class="title">Neko Scrapper</span>
         </div>
         <div class="toggle-container">
-          <button id="mode-toggle" class="toggle-btn active" data-mode="x">X Followers</button>
-          <button id="mode-toggle-tiktok" class="toggle-btn" data-mode="tiktok">TikTok Comments</button>
+          <button id="mode-toggle" class="toggle-btn active" data-mode="x">
+            X Followers
+          </button>
+          <button
+            id="mode-toggle-tiktok"
+            class="toggle-btn"
+            data-mode="tiktok"
+          >
+            TikTok Comments
+          </button>
+          <button
+            id="mode-toggle-hypemeter"
+            class="toggle-btn"
+            data-mode="hypemeter"
+          >
+            Hjalmar Hypemeter
+          </button>
         </div>
         <p class="subtitle" id="subtitle">
           Paste your X handle here
@@ -33,6 +48,47 @@
           <button id="extract-btn" type="submit">Extract</button>
         </form>
         <p id="status" class="status" aria-live="polite"></p>
+
+        <div id="hypemeter-panel" class="hypemeter hidden">
+          <div class="hypemeter-header">
+            <div class="hypemeter-title">Hjalmar Hypemeter</div>
+            <button id="hypemeter-download-btn" type="button">
+              Download CSV (followers + KPIs)
+            </button>
+          </div>
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-label">Total followers</div>
+              <div id="kpi-total" class="kpi-value">-</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Tech / VC</div>
+              <div id="kpi-tech" class="kpi-value">-</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Medical</div>
+              <div id="kpi-medical" class="kpi-value">-</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Other</div>
+              <div id="kpi-other" class="kpi-value">-</div>
+            </div>
+          </div>
+          <div class="hypemeter-table-wrapper">
+            <table class="hypemeter-table">
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Name</th>
+                  <th>Bio</th>
+                  <th>Location</th>
+                  <th>Category</th>
+                </tr>
+              </thead>
+              <tbody id="hypemeter-tbody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </main>
     <script src="./app.js"></script>
