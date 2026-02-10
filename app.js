@@ -30,8 +30,35 @@ const kpiTechDelta = document.getElementById("kpi-tech-delta");
 const kpiMedicalDelta = document.getElementById("kpi-medical-delta");
 const kpiOtherDelta = document.getElementById("kpi-other-delta");
 const chartContainer = document.getElementById("hypemeter-chart");
+const pieContainer = document.getElementById("hypemeter-pie");
+const hypLastRefresh = document.getElementById("hypemeter-last-refresh");
+const kpiPeriodButtons = document.querySelectorAll(".kpi-period-btn");
+
+const HYPEMETER_CACHE_KEY = "hjalmar_hypemeter_last_data_v1";
+const HYPEMETER_OVERRIDES_KEY = "hjalmar_hypemeter_category_overrides_v1";
 
 let hypemeterDataCache = null;
+let hypemeterCategoryOverrides = {};
+let hypemeterSelectedPeriod = "weekly"; // "daily" | "weekly" | "monthly"
+
+// Load persisted overrides + cache from localStorage
+try {
+  const storedOverrides = localStorage.getItem(HYPEMETER_OVERRIDES_KEY);
+  if (storedOverrides) {
+    hypemeterCategoryOverrides = JSON.parse(storedOverrides);
+  }
+} catch {
+  hypemeterCategoryOverrides = {};
+}
+
+try {
+  const storedData = localStorage.getItem(HYPEMETER_CACHE_KEY);
+  if (storedData) {
+    hypemeterDataCache = JSON.parse(storedData);
+  }
+} catch {
+  hypemeterDataCache = null;
+}
 
 const setStatus = (message, isError = false) => {
   statusEl.textContent = message;
@@ -74,6 +101,128 @@ const normalizeHandle = (value) => {
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const saveHypemeterCache = () => {
+  if (!hypemeterDataCache) return;
+  try {
+    localStorage.setItem(HYPEMETER_CACHE_KEY, JSON.stringify(hypemeterDataCache));
+  } catch {
+    // Ignore storage errors
+  }
+};
+
+const saveCategoryOverrides = () => {
+  try {
+    localStorage.setItem(
+      HYPEMETER_OVERRIDES_KEY,
+      JSON.stringify(hypemeterCategoryOverrides),
+    );
+  } catch {
+    // Ignore storage errors
+  }
+};
+
+const computeKpisFromFollowers = (followers) => {
+  let tech = 0;
+  let medical = 0;
+  let other = 0;
+
+  followers.forEach((f) => {
+    if (f.category === "Tech / VC") tech += 1;
+    else if (f.category === "Medical") medical += 1;
+    else other += 1;
+  });
+
+  return {
+    total: followers.length,
+    tech_vc: tech,
+    medical,
+    other,
+  };
+};
+
+const computeKpiEvolutionFromTimeline = (timeline) => {
+  if (!timeline || timeline.length < 2) return null;
+
+  const latest = timeline[timeline.length - 1];
+  const latestTime = new Date(latest.date).getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const weekMs = 7 * dayMs;
+  const monthMs = 30 * dayMs;
+
+  const findRef = (thresholdMs) => {
+    let ref = null;
+    for (const s of timeline) {
+      const t = new Date(s.date).getTime();
+      if (latestTime - t >= thresholdMs) {
+        if (!ref || t > new Date(ref.date).getTime()) {
+          ref = s;
+        }
+      }
+    }
+    return ref;
+  };
+
+  const makePctBlock = (ref) => {
+    if (!ref) return null;
+    const pct = (curr, base) => {
+      if (!base || base === 0) return null;
+      return ((curr - base) / base) * 100;
+    };
+    return {
+      total: pct(latest.total, ref.total),
+      tech_vc: pct(latest.tech_vc, ref.tech_vc),
+      medical: pct(latest.medical, ref.medical),
+      other: pct(latest.other, ref.other),
+    };
+  };
+
+  return {
+    daily: makePctBlock(findRef(dayMs)),
+    weekly: makePctBlock(findRef(weekMs)),
+    monthly: makePctBlock(findRef(monthMs)),
+  };
+};
+
+const applyKpiDeltas = (timeline) => {
+  const evolution = computeKpiEvolutionFromTimeline(timeline);
+  if (!evolution) {
+    kpiTotalDelta.textContent = "";
+    kpiTechDelta.textContent = "";
+    kpiMedicalDelta.textContent = "";
+    kpiOtherDelta.textContent = "";
+    return;
+  }
+
+  const periodKey = hypemeterSelectedPeriod;
+  const current = evolution[periodKey];
+  const labelMap = {
+    daily: "24h",
+    weekly: "7d",
+    monthly: "30d",
+  };
+
+  const formatPct = (value) => {
+    if (value === null || value === undefined) return "–";
+    const sign = value >= 0 ? "+" : "";
+    return `${sign}${value.toFixed(1)}%`;
+  };
+
+  if (!current) {
+    kpiTotalDelta.textContent = "";
+    kpiTechDelta.textContent = "";
+    kpiMedicalDelta.textContent = "";
+    kpiOtherDelta.textContent = "";
+    return;
+  }
+
+  const label = labelMap[periodKey] || "";
+
+  kpiTotalDelta.textContent = `${formatPct(current.total)} vs ${label}`;
+  kpiTechDelta.textContent = `${formatPct(current.tech_vc)} vs ${label}`;
+  kpiMedicalDelta.textContent = `${formatPct(current.medical)} vs ${label}`;
+  kpiOtherDelta.textContent = `${formatPct(current.other)} vs ${label}`;
+};
 
 const downloadCsv = (csv, handle, mode) => {
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -152,6 +301,7 @@ const pollForCsv = async (handle, runId) => {
       }
       if (data.status === "done") {
         hypemeterDataCache = data;
+        saveHypemeterCache();
         renderHypemeterData(data);
         setStatus("Analysis ready.");
         return;
@@ -181,7 +331,16 @@ const pollForCsv = async (handle, runId) => {
 
 
 const renderHypemeterData = (data) => {
-  const { kpis, weeklyDelta, monthlyDelta, timeline, followers } = data;
+  const { timeline, followers } = data;
+
+  // Apply category overrides
+  const followersWithOverrides = followers.map((f) => {
+    const override = f.username ? hypemeterCategoryOverrides[f.username] : null;
+    if (!override) return f;
+    return { ...f, category: override };
+  });
+
+  const kpis = computeKpisFromFollowers(followersWithOverrides);
 
   // Render KPIs
   kpiTotal.textContent = kpis.total.toString();
@@ -189,28 +348,28 @@ const renderHypemeterData = (data) => {
   kpiMedical.textContent = kpis.medical.toString();
   kpiOther.textContent = kpis.other.toString();
 
-  // Render deltas
-  const formatDelta = (delta) => {
-    if (!delta) return "";
-    const sign = delta >= 0 ? "+" : "";
-    return `${sign}${delta}`;
-  };
+  // Render evolution deltas in %
+  applyKpiDeltas(timeline || []);
 
-  if (weeklyDelta && monthlyDelta) {
-    kpiTotalDelta.textContent = `1w: ${formatDelta(weeklyDelta.total)}, 1m: ${formatDelta(monthlyDelta.total)}`;
-    kpiTechDelta.textContent = `1w: ${formatDelta(weeklyDelta.tech_vc)}, 1m: ${formatDelta(monthlyDelta.tech_vc)}`;
-    kpiMedicalDelta.textContent = `1w: ${formatDelta(weeklyDelta.medical)}, 1m: ${formatDelta(monthlyDelta.medical)}`;
-    kpiOtherDelta.textContent = `1w: ${formatDelta(weeklyDelta.other)}, 1m: ${formatDelta(monthlyDelta.other)}`;
+  // Render last refresh
+  if (timeline && timeline.length > 0) {
+    const latest = timeline[timeline.length - 1];
+    const d = new Date(latest.date || latest.created_at);
+    const formatted = d.toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    hypLastRefresh.textContent = `Last refresh: ${formatted}`;
   } else {
-    kpiTotalDelta.textContent = "";
-    kpiTechDelta.textContent = "";
-    kpiMedicalDelta.textContent = "";
-    kpiOtherDelta.textContent = "";
+    hypLastRefresh.textContent = "";
   }
 
   // Render followers table
   hypTbody.innerHTML = "";
-  followers.forEach((follower) => {
+  followersWithOverrides.forEach((follower) => {
     const tr = document.createElement("tr");
     const usernameCell = follower.username
       ? `<a href="${follower.profileUrl}" target="_blank" rel="noopener noreferrer">@${follower.username}</a>`
@@ -220,18 +379,45 @@ const renderHypemeterData = (data) => {
       <td>${follower.name}</td>
       <td>${follower.bio}</td>
       <td>${follower.location}</td>
-      <td>${follower.category}</td>
+      <td></td>
     `;
+    const categoryCell = tr.querySelector("td:last-child");
+    const select = document.createElement("select");
+    ["Tech / VC", "Medical", "Other"].forEach((optionValue) => {
+      const opt = document.createElement("option");
+      opt.value = optionValue;
+      opt.textContent = optionValue;
+      select.appendChild(opt);
+    });
+    select.value = follower.category;
+    select.addEventListener("change", () => {
+      if (follower.username) {
+        if (select.value === follower.category) {
+          delete hypemeterCategoryOverrides[follower.username];
+        } else {
+          hypemeterCategoryOverrides[follower.username] = select.value;
+        }
+        saveCategoryOverrides();
+        if (hypemeterDataCache) {
+          // Force re-render with updated overrides
+          renderHypemeterData(hypemeterDataCache);
+        }
+      }
+    });
+    categoryCell.appendChild(select);
     hypTbody.appendChild(tr);
   });
 
-  // Render chart
-  renderHypemeterChart(timeline);
+  // Render chart + pie
+  renderHypemeterChart(timeline, kpis);
 };
 
-const renderHypemeterChart = (timeline) => {
+const renderHypemeterChart = (timeline, kpis) => {
   if (!timeline || timeline.length < 2) {
-    chartContainer.innerHTML = "<div class=\"kpi-delta\">Run Hypemeter a few times to see trends.</div>";
+    chartContainer.innerHTML =
+      '<div class="kpi-delta">Run Hypemeter a few times to see trends.</div>';
+    pieContainer.innerHTML =
+      '<div class="kpi-delta">Pie chart appears after first run.</div>';
     return;
   }
 
@@ -290,6 +476,73 @@ const renderHypemeterChart = (timeline) => {
       />
     </svg>
   `;
+
+  // Pie chart for category breakdown
+  const totalCat = kpis.tech_vc + kpis.medical + kpis.other;
+  if (!totalCat) {
+    pieContainer.innerHTML =
+      '<div class="kpi-delta">No followers to display.</div>';
+    return;
+  }
+
+  const radius = 30;
+  const circumference = 2 * Math.PI * radius;
+
+  const segLength = (value) => (value / totalCat) * circumference;
+
+  const techLen = segLength(kpis.tech_vc);
+  const medicalLen = segLength(kpis.medical);
+  const otherLen = segLength(kpis.other);
+
+  const techOffset = 0;
+  const medicalOffset = techOffset - techLen;
+  const otherOffset = medicalOffset - medicalLen;
+
+  pieContainer.innerHTML = `
+    <svg viewBox="0 0 80 80" aria-label="Follower category breakdown">
+      <circle
+        cx="40"
+        cy="40"
+        r="${radius}"
+        fill="none"
+        stroke="#f0ebe4"
+        stroke-width="10"
+      />
+      <circle
+        cx="40"
+        cy="40"
+        r="${radius}"
+        fill="none"
+        stroke="#1f77b4"
+        stroke-width="10"
+        stroke-dasharray="${techLen} ${circumference}"
+        stroke-dashoffset="${techOffset}"
+        transform="rotate(-90 40 40)"
+      />
+      <circle
+        cx="40"
+        cy="40"
+        r="${radius}"
+        fill="none"
+        stroke="#2ca02c"
+        stroke-width="10"
+        stroke-dasharray="${medicalLen} ${circumference}"
+        stroke-dashoffset="${medicalOffset}"
+        transform="rotate(-90 40 40)"
+      />
+      <circle
+        cx="40"
+        cy="40"
+        r="${radius}"
+        fill="none"
+        stroke="#ff7f0e"
+        stroke-width="10"
+        stroke-dasharray="${otherLen} ${circumference}"
+        stroke-dashoffset="${otherOffset}"
+        transform="rotate(-90 40 40)"
+      />
+    </svg>
+  `;
 };
 
 // Toggle mode
@@ -329,7 +582,7 @@ toggleHypemeter.addEventListener("click", async () => {
   if (hypemeterDataCache) {
     renderHypemeterData(hypemeterDataCache);
   } else {
-    // Try to fetch latest
+    // Try to fetch latest from backend
     setStatus("Loading latest Hypemeter data...");
     try {
       const response = await fetch(HYPEMETER_FUNCTION_URL, {
@@ -344,16 +597,28 @@ toggleHypemeter.addEventListener("click", async () => {
         const data = await response.json();
         if (data.status === "done") {
           hypemeterDataCache = data;
+          saveHypemeterCache();
           renderHypemeterData(data);
           setStatus("");
         } else {
           setStatus("No data yet. Click Extract to run analysis.");
         }
       } else {
-        setStatus("No data yet. Click Extract to run analysis.");
+        // Fall back to any cached data if available
+        if (hypemeterDataCache) {
+          renderHypemeterData(hypemeterDataCache);
+          setStatus("");
+        } else {
+          setStatus("No data yet. Click Extract to run analysis.");
+        }
       }
     } catch {
-      setStatus("No data yet. Click Extract to run analysis.");
+      if (hypemeterDataCache) {
+        renderHypemeterData(hypemeterDataCache);
+        setStatus("");
+      } else {
+        setStatus("No data yet. Click Extract to run analysis.");
+      }
     }
   }
 });
@@ -428,4 +693,18 @@ form.addEventListener("submit", async (event) => {
   } finally {
     button.disabled = false;
   }
+});
+
+// KPI period buttons wiring
+kpiPeriodButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const period = btn.dataset.period;
+    if (!period) return;
+    hypemeterSelectedPeriod = period;
+    kpiPeriodButtons.forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    if (hypemeterDataCache && hypemeterDataCache.timeline) {
+      applyKpiDeltas(hypemeterDataCache.timeline);
+    }
+  });
 });

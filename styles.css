@@ -155,6 +155,50 @@ button:not(:disabled):hover {
   font-weight: 600;
 }
 
+.hypemeter-last-refresh {
+  font-size: 11px;
+  color: #8b8b8b;
+  margin-bottom: 8px;
+}
+
+.kpi-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.kpi-evolution-label {
+  font-size: 12px;
+  color: #7b7b7b;
+}
+
+.kpi-period-toggle {
+  display: inline-flex;
+  background: #f7f6f4;
+  border-radius: 999px;
+  padding: 2px;
+  gap: 4px;
+}
+
+.kpi-period-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 999px;
+  background: transparent;
+  color: #6b6b6b;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.kpi-period-btn.active {
+  background: #ffffff;
+  color: #121212;
+  box-shadow: 0 1px 4px rgba(18, 18, 18, 0.13);
+}
+
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -184,8 +228,15 @@ button:not(:disabled):hover {
   color: #8b8b8b;
 }
 
-.hypemeter-chart {
+.hypemeter-chart-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr);
+  gap: 8px;
   margin-bottom: 12px;
+}
+
+.hypemeter-chart,
+.hypemeter-pie {
   border-radius: 12px;
   border: 1px solid #efe7dd;
   background: #fdfcfb;
@@ -195,6 +246,18 @@ button:not(:disabled):hover {
 .hypemeter-chart svg {
   width: 100%;
   height: 160px;
+}
+
+.hypemeter-pie {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hypemeter-pie svg {
+  width: 100%;
+  max-width: 160px;
+  height: auto;
 }
 
 .hypemeter-table-wrapper {
@@ -228,4 +291,10 @@ button:not(:disabled):hover {
 
 .hypemeter-table tr:last-child td {
   border-bottom: none;
+}
+
+@media (max-width: 720px) {
+  .hypemeter-chart-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

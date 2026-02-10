@@ -56,6 +56,33 @@
               Download CSV (followers + KPIs)
             </button>
           </div>
+          <div id="hypemeter-last-refresh" class="hypemeter-last-refresh"></div>
+          <div class="kpi-header-row">
+            <div class="kpi-evolution-label">KPIs evolution</div>
+            <div class="kpi-period-toggle" aria-label="KPI period selection">
+              <button
+                type="button"
+                class="kpi-period-btn"
+                data-period="daily"
+              >
+                24h
+              </button>
+              <button
+                type="button"
+                class="kpi-period-btn active"
+                data-period="weekly"
+              >
+                7d
+              </button>
+              <button
+                type="button"
+                class="kpi-period-btn"
+                data-period="monthly"
+              >
+                30d
+              </button>
+            </div>
+          </div>
           <div class="kpi-grid">
             <div class="kpi-card">
               <div class="kpi-label">Total followers</div>
@@ -78,7 +105,10 @@
               <div id="kpi-other-delta" class="kpi-delta"></div>
             </div>
           </div>
-          <div id="hypemeter-chart" class="hypemeter-chart"></div>
+          <div class="hypemeter-chart-row">
+            <div id="hypemeter-chart" class="hypemeter-chart"></div>
+            <div id="hypemeter-pie" class="hypemeter-chart hypemeter-pie"></div>
+          </div>
           <div class="hypemeter-table-wrapper">
             <table class="hypemeter-table">
               <thead>
