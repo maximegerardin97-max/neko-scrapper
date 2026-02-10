@@ -470,69 +470,45 @@ const renderHypemeterChart = (timeline, kpis) => {
     return;
   }
 
+  const cx = 40;
+  const cy = 40;
   const radius = 30;
-  const circumference = 2 * Math.PI * radius;
-
-  const segLength = (value) => (value / totalCat) * circumference;
   const pct = (value) => ((value / totalCat) * 100).toFixed(1);
 
-  const techLen = segLength(kpis.tech_vc);
-  const medicalLen = segLength(kpis.medical);
-  const otherLen = segLength(kpis.other);
+  const describeArc = (startAngle, endAngle) => {
+    // Clamp arcs that cover the full circle
+    if (endAngle - startAngle >= 2 * Math.PI) {
+      endAngle = startAngle + 2 * Math.PI - 0.001;
+    }
+    const x1 = cx + radius * Math.cos(startAngle);
+    const y1 = cy + radius * Math.sin(startAngle);
+    const x2 = cx + radius * Math.cos(endAngle);
+    const y2 = cy + radius * Math.sin(endAngle);
+    const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+    return `M ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`;
+  };
 
-  const techOffset = 0;
-  const medicalOffset = techOffset - techLen;
-  const otherOffset = medicalOffset - medicalLen;
+  const segments = [
+    { label: "Tech / VC", value: kpis.tech_vc, color: "#1f77b4" },
+    { label: "Medical", value: kpis.medical, color: "#2ca02c" },
+    { label: "Other", value: kpis.other, color: "#ff7f0e" },
+  ];
+
+  let angle = -Math.PI / 2; // start at top
+  const arcs = segments
+    .filter((s) => s.value > 0)
+    .map((s) => {
+      const sweep = (s.value / totalCat) * 2 * Math.PI;
+      const d = describeArc(angle, angle + sweep);
+      angle += sweep;
+      return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="10" stroke-linecap="butt"><title>${s.label}: ${pct(s.value)}%</title></path>`;
+    })
+    .join("\n      ");
 
   pieContainer.innerHTML = `
     <svg viewBox="0 0 80 80" aria-label="Follower category breakdown">
-      <circle
-        cx="40"
-        cy="40"
-        r="${radius}"
-        fill="none"
-        stroke="#f0ebe4"
-        stroke-width="10"
-      />
-      <circle
-        cx="40"
-        cy="40"
-        r="${radius}"
-        fill="none"
-        stroke="#1f77b4"
-        stroke-width="10"
-        stroke-dasharray="${techLen} ${circumference}"
-        stroke-dashoffset="${techOffset}"
-        transform="rotate(-90 40 40)"
-      >
-        <title>Tech / VC: ${pct(kpis.tech_vc)}%</title>
-      </circle>
-      <circle
-        cx="40"
-        cy="40"
-        r="${radius}"
-        fill="none"
-        stroke="#2ca02c"
-        stroke-width="10"
-        stroke-dasharray="${medicalLen} ${circumference}"
-        stroke-dashoffset="${medicalOffset}"
-        transform="rotate(-90 40 40)"
-      >
-        <title>Medical: ${pct(kpis.medical)}%</title>
-      </circle>
-      <circle
-        cx="40"
-        cy="40"
-        r="${radius}"
-        fill="none"
-        stroke="#ff7f0e"
-        stroke-width="10"
-        stroke-dasharray="${otherLen} ${circumference}"
-        stroke-dashoffset="${otherOffset}"
-        transform="rotate(-90 40 40)"
-      >
-        <title>Other: ${pct(kpis.other)}%</title>
-      </circle>
+      <circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="#f0ebe4" stroke-width="10" />
+      ${arcs}
     </svg>
   `;
 };
