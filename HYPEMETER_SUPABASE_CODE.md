@@ -1,6 +1,6 @@
 # Supabase Code for Hjalmar Hypemeter
 
-## 1. SQL - Create Table (run once in SQL Editor)
+## 1. SQL - Create Tables (run once in SQL Editor)
 
 ```sql
 create extension if not exists "pgcrypto";
@@ -12,6 +12,17 @@ create table if not exists hjalmar_snapshots (
   tech_vc integer not null,
   medical integer not null,
   other integer not null
+);
+
+create table if not exists hjalmar_followers (
+  id uuid primary key default gen_random_uuid(),
+  username text unique,
+  name text,
+  bio text,
+  location text,
+  profile_url text,
+  category text,
+  updated_at timestamptz not null default now()
 );
 ```
 
@@ -111,14 +122,72 @@ serve(async (req) => {
     return json({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }, 500);
   }
 
-  let body: { runId?: string };
+  let body: { runId?: string; mode?: "latest" };
   try {
     body = await req.json();
   } catch {
     body = {};
   }
 
-  // 1) If we already have a runId, poll Apify and, if done, compute + persist KPIs
+  // 1) If mode === "latest", just read the latest snapshot + followers from DB
+  if (body.mode === "latest") {
+    const { data: snaps, error: snapsError } = await supabase
+      .from("hjalmar_snapshots")
+      .select("*")
+      .order("created_at", { ascending: true });
+
+    if (snapsError || !snaps || snaps.length === 0) {
+      return json({ status: "empty", kpis: null, timeline: [], followers: [] });
+    }
+
+    const latest = snaps[snaps.length - 1];
+    const kpis = {
+      total: latest.total_followers,
+      tech_vc: latest.tech_vc,
+      medical: latest.medical,
+      other: latest.other,
+    };
+
+    const timeline = snaps.map((s) => ({
+      date: s.created_at,
+      total: s.total_followers,
+      tech_vc: s.tech_vc,
+      medical: s.medical,
+      other: s.other,
+    }));
+
+    const { data: followerRows, error: followersError } = await supabase
+      .from("hjalmar_followers")
+      .select("*")
+      .order("updated_at", { ascending: false });
+
+    if (followersError || !followerRows) {
+      return json({
+        status: "done",
+        kpis,
+        timeline,
+        followers: [],
+      });
+    }
+
+    const followers = followerRows.map((row: any) => ({
+      username: row.username,
+      name: row.name,
+      bio: row.bio,
+      location: row.location,
+      profileUrl: row.profile_url,
+      category: row.category,
+    }));
+
+    return json({
+      status: "done",
+      kpis,
+      timeline,
+      followers,
+    });
+  }
+
+  // 2) If we already have a runId, poll Apify and, if done, compute + persist KPIs
   if (body.runId) {
     const statusUrl = `https://api.apify.com/v2/actor-runs/${body.runId}`;
     const statusResp = await fetch(statusUrl, {
@@ -217,6 +286,29 @@ serve(async (req) => {
         return json({ error: "Failed to insert snapshot.", detail: insertError.message }, 500);
       }
 
+      // Upsert followers table so FE can fetch latest from DB
+      const { error: followersUpsertError } = await supabase
+        .from("hjalmar_followers")
+        .upsert(
+          followers.map((f) => ({
+            username: f.username,
+            name: f.name,
+            bio: f.bio,
+            location: f.location,
+            profile_url: f.profileUrl,
+            category: f.category,
+            updated_at: new Date().toISOString(),
+          })),
+          {
+            onConflict: "username",
+          },
+        );
+
+      if (followersUpsertError) {
+        // Not fatal for the main flow; return KPIs anyway
+        console.error("Failed to upsert hjalmar_followers:", followersUpsertError.message);
+      }
+
       // Fetch all snapshots for timeline + deltas
       const { data: snaps, error: snapsError } = await supabase
         .from("hjalmar_snapshots")
@@ -298,7 +390,7 @@ serve(async (req) => {
     return json({ error: `Unexpected run status: ${runStatus}` }, 500);
   }
 
-  // 2) No runId -> start a new Apify run for HNilsonne
+  // 3) No runId -> start a new Apify run for HNilsonne
   const encodedActorId = encodeURIComponent(APIFY_ACTOR_ID);
   const startRunUrl = `https://api.apify.com/v2/acts/${encodedActorId}/runs`;
 

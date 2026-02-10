@@ -591,7 +591,7 @@ toggleHypemeter.addEventListener("click", async () => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
         },
-        body: JSON.stringify({ handle: HYPE_HANDLE }),
+        body: JSON.stringify({ mode: "latest" }),
       });
       if (response.ok) {
         const data = await response.json();
