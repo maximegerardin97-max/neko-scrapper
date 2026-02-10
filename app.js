@@ -186,42 +186,27 @@ const computeKpiEvolutionFromTimeline = (timeline) => {
 
 const applyKpiDeltas = (timeline) => {
   const evolution = computeKpiEvolutionFromTimeline(timeline);
-  if (!evolution) {
-    kpiTotalDelta.textContent = "";
-    kpiTechDelta.textContent = "";
-    kpiMedicalDelta.textContent = "";
-    kpiOtherDelta.textContent = "";
-    return;
-  }
 
   const periodKey = hypemeterSelectedPeriod;
-  const current = evolution[periodKey];
   const labelMap = {
     daily: "24h",
     weekly: "7d",
     monthly: "30d",
   };
+  const label = labelMap[periodKey] || "";
 
   const formatPct = (value) => {
-    if (value === null || value === undefined) return "–";
+    if (value === null || value === undefined) return "+0.0%";
     const sign = value >= 0 ? "+" : "";
     return `${sign}${value.toFixed(1)}%`;
   };
 
-  if (!current) {
-    kpiTotalDelta.textContent = "";
-    kpiTechDelta.textContent = "";
-    kpiMedicalDelta.textContent = "";
-    kpiOtherDelta.textContent = "";
-    return;
-  }
+  const current = evolution ? evolution[periodKey] : null;
 
-  const label = labelMap[periodKey] || "";
-
-  kpiTotalDelta.textContent = `${formatPct(current.total)} vs ${label}`;
-  kpiTechDelta.textContent = `${formatPct(current.tech_vc)} vs ${label}`;
-  kpiMedicalDelta.textContent = `${formatPct(current.medical)} vs ${label}`;
-  kpiOtherDelta.textContent = `${formatPct(current.other)} vs ${label}`;
+  kpiTotalDelta.textContent = `${formatPct(current?.total)} vs ${label}`;
+  kpiTechDelta.textContent = `${formatPct(current?.tech_vc)} vs ${label}`;
+  kpiMedicalDelta.textContent = `${formatPct(current?.medical)} vs ${label}`;
+  kpiOtherDelta.textContent = `${formatPct(current?.other)} vs ${label}`;
 };
 
 const downloadCsv = (csv, handle, mode) => {
@@ -489,6 +474,7 @@ const renderHypemeterChart = (timeline, kpis) => {
   const circumference = 2 * Math.PI * radius;
 
   const segLength = (value) => (value / totalCat) * circumference;
+  const pct = (value) => ((value / totalCat) * 100).toFixed(1);
 
   const techLen = segLength(kpis.tech_vc);
   const medicalLen = segLength(kpis.medical);
@@ -518,7 +504,9 @@ const renderHypemeterChart = (timeline, kpis) => {
         stroke-dasharray="${techLen} ${circumference}"
         stroke-dashoffset="${techOffset}"
         transform="rotate(-90 40 40)"
-      />
+      >
+        <title>Tech / VC: ${pct(kpis.tech_vc)}%</title>
+      </circle>
       <circle
         cx="40"
         cy="40"
@@ -529,7 +517,9 @@ const renderHypemeterChart = (timeline, kpis) => {
         stroke-dasharray="${medicalLen} ${circumference}"
         stroke-dashoffset="${medicalOffset}"
         transform="rotate(-90 40 40)"
-      />
+      >
+        <title>Medical: ${pct(kpis.medical)}%</title>
+      </circle>
       <circle
         cx="40"
         cy="40"
@@ -540,7 +530,9 @@ const renderHypemeterChart = (timeline, kpis) => {
         stroke-dasharray="${otherLen} ${circumference}"
         stroke-dashoffset="${otherOffset}"
         transform="rotate(-90 40 40)"
-      />
+      >
+        <title>Other: ${pct(kpis.other)}%</title>
+      </circle>
     </svg>
   `;
 };
