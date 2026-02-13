@@ -2,6 +2,8 @@ const X_FUNCTION_URL =
   "https://cqlopsqqqzzkfpmcntbv.supabase.co/functions/v1/x-scrapper";
 const TIKTOK_FUNCTION_URL =
   "https://cqlopsqqqzzkfpmcntbv.supabase.co/functions/v1/tiktok-comments-scraper";
+const INSTAGRAM_FUNCTION_URL =
+  "https://cqlopsqqqzzkfpmcntbv.supabase.co/functions/v1/instagram-comments-scraper";
 const HYPEMETER_FUNCTION_URL =
   "https://cqlopsqqqzzkfpmcntbv.supabase.co/functions/v1/hjalmar-hypemeter";
 const SUPABASE_ANON_KEY =
@@ -17,6 +19,7 @@ const button = document.getElementById("extract-btn");
 const subtitle = document.getElementById("subtitle");
 const toggleX = document.getElementById("mode-toggle");
 const toggleTiktok = document.getElementById("mode-toggle-tiktok");
+const toggleInstagram = document.getElementById("mode-toggle-instagram");
 const toggleHypemeter = document.getElementById("mode-toggle-hypemeter");
 const hypPanel = document.getElementById("hypemeter-panel");
 const hypDownloadBtn = document.getElementById("hypemeter-download-btn");
@@ -86,17 +89,34 @@ const normalizeHandle = (value) => {
   }
 
   // TikTok mode - return the full URL or video ID
-  try {
-    const url = new URL(trimmed);
-    if (
-      url.hostname.includes("tiktok.com") ||
-      url.hostname.includes("vm.tiktok.com")
-    ) {
-      return trimmed;
+  if (currentMode === "tiktok") {
+    try {
+      const url = new URL(trimmed);
+      if (
+        url.hostname.includes("tiktok.com") ||
+        url.hostname.includes("vm.tiktok.com")
+      ) {
+        return trimmed;
+      }
+    } catch (_error) {
+      // Not a URL.
     }
-  } catch (_error) {
-    // Not a URL.
+    return trimmed;
   }
+
+  // Instagram mode - return the full URL
+  if (currentMode === "instagram") {
+    try {
+      const url = new URL(trimmed);
+      if (url.hostname.includes("instagram.com")) {
+        return trimmed;
+      }
+    } catch (_error) {
+      // Not a URL.
+    }
+    return trimmed;
+  }
+
   return trimmed;
 };
 
@@ -220,6 +240,8 @@ const downloadCsv = (csv, handle, mode) => {
     filename = `followers_${handle}.csv`;
   } else if (mode === "hypemeter") {
     filename = `hjalmar_hypemeter_${handle}.csv`;
+  } else if (mode === "instagram") {
+    filename = `instagram_comments_${handle.replace(/[^a-zA-Z0-9]/g, "_")}.csv`;
   } else {
     filename = `tiktok_comments_${handle.replace(/[^a-zA-Z0-9]/g, "_")}.csv`;
   }
@@ -236,6 +258,8 @@ const startScrape = async (handle) => {
       ? HYPEMETER_FUNCTION_URL
       : currentMode === "x"
       ? X_FUNCTION_URL
+      : currentMode === "instagram"
+      ? INSTAGRAM_FUNCTION_URL
       : TIKTOK_FUNCTION_URL;
   const response = await fetch(functionUrl, {
     method: "POST",
@@ -265,6 +289,8 @@ const pollForCsv = async (handle, runId) => {
       ? HYPEMETER_FUNCTION_URL
       : currentMode === "x"
       ? X_FUNCTION_URL
+      : currentMode === "instagram"
+      ? INSTAGRAM_FUNCTION_URL
       : TIKTOK_FUNCTION_URL;
   while (true) {
     await sleep(5000);
@@ -518,6 +544,7 @@ toggleX.addEventListener("click", () => {
   currentMode = "x";
   toggleX.classList.add("active");
   toggleTiktok.classList.remove("active");
+  toggleInstagram.classList.remove("active");
   toggleHypemeter.classList.remove("active");
   subtitle.textContent = "Paste your X handle here";
   input.placeholder = "@username or https://x.com/username";
@@ -529,9 +556,22 @@ toggleTiktok.addEventListener("click", () => {
   currentMode = "tiktok";
   toggleTiktok.classList.add("active");
   toggleX.classList.remove("active");
+  toggleInstagram.classList.remove("active");
   toggleHypemeter.classList.remove("active");
   subtitle.textContent = "Paste your TikTok video URL here";
   input.placeholder = "https://www.tiktok.com/@username/video/1234567890";
+  input.value = "";
+  hypPanel.classList.add("hidden");
+});
+
+toggleInstagram.addEventListener("click", () => {
+  currentMode = "instagram";
+  toggleInstagram.classList.add("active");
+  toggleX.classList.remove("active");
+  toggleTiktok.classList.remove("active");
+  toggleHypemeter.classList.remove("active");
+  subtitle.textContent = "Paste your Instagram post URL here";
+  input.placeholder = "https://www.instagram.com/p/ABC123/";
   input.value = "";
   hypPanel.classList.add("hidden");
 });
@@ -541,6 +581,7 @@ toggleHypemeter.addEventListener("click", async () => {
   toggleHypemeter.classList.add("active");
   toggleX.classList.remove("active");
   toggleTiktok.classList.remove("active");
+  toggleInstagram.classList.remove("active");
   subtitle.textContent = "Hjalmar Hypemeter runs on @HNilsonne";
   input.placeholder = "Handle is fixed to @HNilsonne";
   input.value = "@HNilsonne";
@@ -638,6 +679,8 @@ form.addEventListener("submit", async (event) => {
     const errorMsg =
       currentMode === "x"
         ? "Please paste a valid X handle or URL."
+        : currentMode === "instagram"
+        ? "Please paste a valid Instagram post URL."
         : "Please paste a valid TikTok video URL.";
     setStatus(errorMsg, true);
     return;
@@ -653,6 +696,8 @@ form.addEventListener("submit", async (event) => {
         ? "Scrape started. Fetching followers…"
         : currentMode === "hypemeter"
         ? "Scrape started. Analyzing followers…"
+        : currentMode === "instagram"
+        ? "Scrape started. Fetching Instagram comments…"
         : "Scrape started. Fetching comments…";
     setStatus(statusMsg);
     await pollForCsv(handle, runId);
